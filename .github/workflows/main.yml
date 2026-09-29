@@ -15,89 +15,144 @@ jobs:
 
     steps:
 
-      # 1. Download repository
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. Java 17
-      - name: Setup Java
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      # 3. Gradle 9.3.1
-      - name: Setup Gradle
+      - name: Setup Gradle 9.3.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.3.1'
 
-      # 4. Find ZIP
-      - name: Find Project ZIP
+      - name: Find ZIP
         shell: bash
         run: |
           set -e
 
-          ZIP_FILE=$(find "$GITHUB_WORKSPACE" \
-            -type f \
-            -name "*.zip" \
-            ! -path "*/.git/*" \
-            | head -n 1)
+          ZIP_FILE=$(find . -type f -name "*.zip" ! -path "./.git/*" | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: No ZIP file found."
+            echo "ERROR: ZIP file not found."
             exit 1
           fi
 
-          echo "ZIP FOUND:"
-          echo "$ZIP_FILE"
-
+          echo "ZIP FOUND: $ZIP_FILE"
           echo "ZIP_FILE=$ZIP_FILE" >> "$GITHUB_ENV"
 
-      # 5. Extract project
-      - name: Extract Android Project
+      - name: Extract ZIP
         shell: bash
         run: |
           set -e
 
-          rm -rf "$GITHUB_WORKSPACE/project"
-          mkdir -p "$GITHUB_WORKSPACE/project"
+          rm -rf project
+          mkdir -p project
 
-          unzip -o "$ZIP_FILE" \
-            -d "$GITHUB_WORKSPACE/project"
+          unzip -o "$ZIP_FILE" -d project
 
-          echo "Project extracted."
+          echo "ZIP extracted successfully."
 
-      # 6. Locate Gradle project
       - name: Locate Android Project
         shell: bash
         run: |
           set -e
 
-          SETTINGS=$(find "$GITHUB_WORKSPACE/project" \
-            -type f \
-            \
-              -name "settings.gradle" \
-              -o \
-              -name "settings.gradle.kts" \
-            \
-            | head -n 1)
+          SETTINGS=$(find project -type f -name "settings.gradle*" | head -n 1)
 
           if [ -z "$SETTINGS" ]; then
-            echo "ERROR: settings.gradle not found."
-
-            echo "Project files:"
-            find "$GITHUB_WORKSPACE/project" \
-              -maxdepth 6 \
-              -type f \
-              | head -200
-
+            echo "ERROR: settings.gradle or settings.gradle.kts not found."
+            echo ""
+            echo "Project structure:"
+            find project -maxdepth 6 -type f | head -200
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$SETTINGS")
 
-          echo "ANDROID PROJECT:"
+          echo "Android project found:"
           echo "$PROJECT_DIR"
 
-          echo "
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Remove Google Services
+        shell: bash
+        run: |
+          set -e
+
+          find "$PROJECT_DIR" -type f -name "google-services.json" -delete || true
+
+          echo "Google Services files removed."
+
+      - name: Create Debug Keystore
+        shell: bash
+        run: |
+          set -e
+
+          KEYSTORE="$PROJECT_DIR/debug.keystore"
+
+          rm -f "$KEYSTORE"
+
+          keytool -genkeypair \
+            -v \
+            -keystore "$KEYSTORE" \
+            -storetype JKS \
+            -storepass android \
+            -keypass android \
+            -alias androiddebugkey \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+
+          echo "Debug keystore created:"
+          ls -lh "$KEYSTORE"
+
+      - name: Build IGNITE APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          set -e
+
+          echo "Building IGNITE APK..."
+
+          gradle assembleDebug \
+            --no-daemon \
+            --stacktrace \
+            -x :app:processDebugGoogleServices
+
+      - name: Find APK
+        shell: bash
+        run: |
+          set -e
+
+          APK=$(find "$PROJECT_DIR" -type f -name "*.apk" | head -n 1)
+
+          if [ -z "$APK" ]; then
+            echo "ERROR: APK not found."
+            exit 1
+          fi
+
+          echo "APK FOUND:"
+          echo "$APK"
+
+          cp "$APK" "$GITHUB_WORKSPACE/IGNITE.apk"
+
+      - name: Upload IGNITE APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: IGNITE-APK
+          path: IGNITE.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Build Complete
+        shell: bash
+        run: |
+          echo "================================"
+          echo "IGNITE APK BUILD SUCCESS"
+          echo "================================"
+          ls -lh "$GITHUB_WORKSPACE/IGNITE.apk"

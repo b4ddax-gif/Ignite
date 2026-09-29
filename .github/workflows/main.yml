@@ -11,76 +11,68 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Java 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Find and extract ZIP
-        shell: bash
+      - name: Find ZIP
         run: |
-          set -e
-
-          ZIP_FILE=$(find . -maxdepth 3 -type f -iname "*.zip" | head -n 1)
+          ZIP_FILE=$(find . -type f -name "*.zip" | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: No ZIP file found."
+            echo "No ZIP file found"
             exit 1
           fi
 
-          echo "Found ZIP: $ZIP_FILE"
+          echo "ZIP found: $ZIP_FILE"
+          mkdir -p project
+          unzip -o "$ZIP_FILE" -d project
 
-          mkdir -p android-project
-          unzip -o "$ZIP_FILE" -d android-project
-
-      - name: Locate Android project
-        shell: bash
+      - name: Find Android project
         run: |
-          set -e
-
-          SETTINGS=$(find android-project -type f \
-            -name "settings.gradle" -o \
-            -name "settings.gradle.kts" \
-          | head -n 1)
+          SETTINGS=$(find project -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) | head -n 1)
 
           if [ -z "$SETTINGS" ]; then
-            echo "ERROR: settings.gradle or settings.gradle.kts not found."
-            find android-project -maxdepth 4 -type f | head -100
+            echo "Android project not found"
+            find project -maxdepth 5 -type f | head -100
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$SETTINGS")
-
-          echo "Android project found at: $PROJECT_DIR"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Android project: $PROJECT_DIR"
 
-      - name: Make Gradle executable
+      - name: Prepare Gradle
         run: |
-          chmod +x "$PROJECT_DIR/gradlew" 2>/dev/null || true
+          chmod +x "$PROJECT_DIR/gradlew"
 
-      - name: Build Debug APK
+      - name: Build APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           ./gradlew assembleDebug --stacktrace
 
       - name: Find APK
-        shell: bash
         run: |
           APK=$(find "$PROJECT_DIR" -type f -name "*.apk" | head -n 1)
 
           if [ -z "$APK" ]; then
-            echo "ERROR: APK was not generated."
+            echo "APK was not generated"
             exit 1
           fi
 
           echo "APK found: $APK"
           cp "$APK" "$GITHUB_WORKSPACE/IGNITE.apk"
 
-      - name:
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: IGNITE-APK
+          path: IGNITE.apk

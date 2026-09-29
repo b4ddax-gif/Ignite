@@ -48,10 +48,10 @@ jobs:
         run: |
           set -e
 
-          SETTINGS=$(find project -type f \( \
+          SETTINGS=$(find project -type f \
             -name "settings.gradle" -o \
             -name "settings.gradle.kts" \
-          \) | head -n 1)
+          | head -n 1)
 
           if [ -z "$SETTINGS" ]; then
             echo "ERROR: Android project not found."
@@ -64,17 +64,43 @@ jobs:
           echo "Android project: $PROJECT_DIR"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: Remove google-services.json
+      - name: Remove Google Services
         shell: bash
         run: |
-          echo "Searching for google-services.json..."
-
           find "$PROJECT_DIR" \
             -type f \
             -name "google-services.json" \
             -delete
 
-          echo "google-services.json removed if present."
+          echo "Google Services file removed if present."
+
+      - name: Create debug keystore
+        shell: bash
+        run: |
+          set -e
+
+          KEYSTORE="$PROJECT_DIR/debug.keystore"
+
+          if [ ! -f "$KEYSTORE" ]; then
+            echo "Creating debug keystore..."
+
+            keytool -genkeypair \
+              -v \
+              -keystore "$KEYSTORE" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+
+            echo "Debug keystore created."
+          else
+            echo "Debug keystore already exists."
+          fi
+
+          ls -lh "$KEYSTORE"
 
       - name: Build APK
         working-directory: ${{ env.PROJECT_DIR }}
@@ -83,7 +109,6 @@ jobs:
           set -e
 
           echo "Building IGNITE APK..."
-          echo "Skipping Google Services because IGNITE does not use Firebase."
 
           gradle assembleDebug \
             -x :app:processDebugGoogleServices \
@@ -93,8 +118,6 @@ jobs:
         shell: bash
         run: |
           set -e
-
-          echo "Searching for APK..."
 
           APK=$(find "$PROJECT_DIR" \
             -type f \
@@ -116,4 +139,4 @@ jobs:
         with:
           name: IGNITE-APK
           path: IGNITE.apk
-          if-no-files-found: error
+         

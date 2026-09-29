@@ -20,10 +20,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Gradle
+      - name: Setup Gradle 9.3.1
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: '9.3.1'
 
       - name: Find and extract ZIP
         shell: bash
@@ -47,34 +47,21 @@ jobs:
         run: |
           set -e
 
-          BUILD_FILE=$(find project -type f \( \
-            -name "build.gradle" -o \
-            -name "build.gradle.kts" \
+          SETTINGS=$(find project -type f \( \
+            -name "settings.gradle" -o \
+            -name "settings.gradle.kts" \
           \) | head -n 1)
 
-          if [ -z "$BUILD_FILE" ]; then
-            echo "ERROR: No Android Gradle project found."
-            echo "Files inside project:"
+          if [ -z "$SETTINGS" ]; then
+            echo "ERROR: Android project not found."
             find project -maxdepth 5 -type f | head -150
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$BUILD_FILE")
+          PROJECT_DIR=$(dirname "$SETTINGS")
 
-          while [ "$PROJECT_DIR" != "." ] && [ ! -f "$PROJECT_DIR/settings.gradle" ] && [ ! -f "$PROJECT_DIR/settings.gradle.kts" ]; do
-            PROJECT_DIR=$(dirname "$PROJECT_DIR")
-          done
-
-          echo "Android project directory: $PROJECT_DIR"
+          echo "Android project: $PROJECT_DIR"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-      - name: Check project
-        run: |
-          echo "Project directory:"
-          echo "$PROJECT_DIR"
-
-          echo "Project files:"
-          find "$PROJECT_DIR" -maxdepth 2 -type f | sort
 
       - name: Build APK
         working-directory: ${{ env.PROJECT_DIR }}
@@ -93,9 +80,7 @@ jobs:
             exit 1
           fi
 
-          echo "APK found:"
-          echo "$APK"
-
+          echo "APK found: $APK"
           cp "$APK" "$GITHUB_WORKSPACE/IGNITE.apk"
 
       - name: Upload IGNITE APK
